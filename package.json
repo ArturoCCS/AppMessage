@@ -8,8 +8,8 @@
     "run:android": "expo run:android",
     "run:ios": "expo run:ios",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
   },
@@ -53,6 +53,10 @@
     "babel-plugin-module-resolver": "^5.0.2",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "expo": "^54.0.20",
+    "expo-dev-client": "^6.0.16",
+    "install": "^0.13.0",
+    "npx": "^10.2.2",
     "typescript": "~5.9.2"
   },
   "private": true
