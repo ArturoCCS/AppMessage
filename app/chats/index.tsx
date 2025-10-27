@@ -1,99 +1,32 @@
-import { ensureBluetoothPermissions } from "@/src/services/permissions/BluetoothPermissions";
-import { bleTransport, UART_SERVICE_UUID } from "@/src/services/transport/BLETransport";
-import type { ScanResult } from "@/src/services/transport/Transport";
-import "@/src/setup/polyfills";
-import { LocalDB } from "@/src/storage/LocalDB";
-import { isExpoGo } from "@/src/utils/env";
+import { ChatListItem } from "@/src/components/chat/ChatListItem";
+import { AppHeader } from "@/src/components/common/AppHeader";
+import { useChat } from "@/src/state/ChatContext";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React from "react";
+import { FlatList, View } from "react-native";
 
-export default function DeviceSelect() {
-  const [devices, setDevices] = useState<ScanResult[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (isExpoGo) return;
-    (async () => {
-      const ok = await ensureBluetoothPermissions();
-      if (!ok) { Alert.alert("Permisos", "No se otorgaron permisos de Bluetooth."); return; }
-      setDevices([]);
-      setLoading(true);
-      bleTransport
-        .scanForDevices((d) => {
-          setDevices((prev) => (prev.find((p) => p.id === d.id) ? prev : [...prev, d]));
-        }, { timeoutMs: 8000 })
-        .finally(() => setLoading(false));
-    })();
-    return () => bleTransport.stopScan();
-  }, []);
-
-  const connect = async (d?: ScanResult) => {
-    if (isExpoGo) {
-      await ensureUser();
-      router.replace("/chats");
-      return;
-    }
-    if (!d) return;
-    setLoading(true);
-    try {
-      await bleTransport.connect(d.id);
-      await ensureUser();
-      router.replace("/chats");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo conectar");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const ensureUser = async () => {
-    const me = await LocalDB.getMyUser();
-    if (!me) {
-      await LocalDB.setMyUser({
-        id: `USR${Math.floor(Math.random() * 999999).toString().padStart(6, "0")}`,
-        displayName: "Yo",
-      });
-    }
-  };
+export default function ChatsScreen() {
+  const { chats, loadingChats, refreshChats } = useChat();
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Selecciona tu ESP32 (BLE)</Text>
-      <Text style={styles.subtitle}>Servicio: {UART_SERVICE_UUID}</Text>
-
-      {isExpoGo && (
-        <View style={{ marginBottom: 12 }}>
-          <Text style={{ color: "#a00", fontWeight: "700" }}>
-            Estás en Expo Go: BLE está deshabilitado.
-          </Text>
-          <TouchableOpacity style={[styles.item, { backgroundColor: "#007bff20" }]} onPress={() => connect()}>
-            <Text style={{ color: "#007bff", fontWeight: "700" }}>Continuar sin BLE</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {loading && <ActivityIndicator style={{ marginTop: 8 }} />}
+    <View style={{ flex: 1 }}>
+      <AppHeader title="Chats" />
       <FlatList
-        data={devices}
-        keyExtractor={(item) => item.id}
+        data={chats}
+        keyExtractor={(c) => c.id}
+        refreshing={loadingChats}
+        onRefresh={refreshChats}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.item} onPress={() => connect(item)}>
-            <Text style={styles.name}>{item.name || "Sin nombre"}</Text>
-            <Text style={styles.id}>{item.id}</Text>
-          </TouchableOpacity>
+          <ChatListItem
+            title={item.title}
+            subtitle={item.lastMessageText}
+            time={item.lastMessageAt ? new Date(item.lastMessageAt).toLocaleTimeString() : undefined}
+            unread={item.unreadCount ?? 0}
+            onPress={() => router.push(`/chats/${item.id}`)}
+          />
         )}
-        ListEmptyComponent={!loading && !isExpoGo ? <Text>No se encontraron dispositivos</Text> : null}
+        contentContainerStyle={{ paddingBottom: 32 }}
       />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 20, fontWeight: "700" },
-  subtitle: { fontSize: 12, color: "#666", marginBottom: 8 },
-  item: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: "#ddd" },
-  name: { fontSize: 16 },
-  id: { fontSize: 12, color: "#666" },
-});

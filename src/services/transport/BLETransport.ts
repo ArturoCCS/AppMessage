@@ -1,12 +1,8 @@
+import { isExpoGo } from "@/src/utils/env";
 import { Platform } from "react-native";
-import { isExpoGo } from "../../utils/env";
 
-type Impl = typeof import("./BLETransport.native");
-let impl: Impl;
-
-if (Platform.OS === "web") {
-  impl = require("./BLETransport.web");
-} else if (isExpoGo) {
+let impl: typeof import("./BLETransport.expo");
+if (Platform.OS === "web" || isExpoGo) {
   impl = require("./BLETransport.expo");
 } else {
   impl = require("./BLETransport.native");

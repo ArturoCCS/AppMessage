@@ -7,10 +7,8 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Platform } from "react-native";
 
-export default function ChatDetailByContact() {
-  const params = useLocalSearchParams<{ contactId?: string; chatId?: string }>();
-  const chatId = (params.chatId || params.contactId || "") as string;
-
+export default function ChatDetail() {
+  const { chatId } = useLocalSearchParams<{ chatId: string }>();
   const { me, getMessages, subscribe, sendMessage } = useChat();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");

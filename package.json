@@ -3,6 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "ui": "expo start -c",
+    "start:dev": "expo start --dev-client",
+    "eas:dev:android": "eas build --profile development --platform android",
     "start": "expo start",
     "dev": "expo start --dev-client",
     "run:android": "expo run:android",
