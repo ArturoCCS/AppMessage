@@ -18,7 +18,8 @@ type CameraExports = {
 type TabKey = "my" | "scan";
 
 export default function ContactQRScreen() {
-  const { me, token, shareId } = useUser();
+  const { me, token } = useUser();
+  const shareId = me?.id ?? "";
   const [tab, setTab] = useState<TabKey>("my");
   const [CameraViewComp, setCameraViewComp] = useState<CameraExports["CameraView"] | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
