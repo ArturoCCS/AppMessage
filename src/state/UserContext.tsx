@@ -6,17 +6,15 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 
 type Ctx = {
   loading: boolean;
-  me: User | null;
+  me: (User & { avatar?: string | null }) | null;
   token: string | null;
   requestOtp: (email: string) => Promise<void>;
   verifyOtp: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
-  updateProfile: (data: { name?: string }) => Promise<void>;
-  uploadAvatar: (uri: string) => Promise<string>;
-  removeAvatar: () => Promise<void>;
-  exportIdentity: () => Promise<string>;
   updateName: (name: string) => Promise<void>;
   updateAvatar: (uri?: string) => Promise<void>;
+  removeAvatar: () => Promise<void>;
+  forceRefresh: () => Promise<void>;
 };
 
 const UserCtx = createContext<Ctx | undefined>(undefined);
@@ -36,7 +34,7 @@ function qualifyUser(u: User): User & { avatar?: string | null } {
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
-  const [me, setMe] = useState<User | null>(null);
+  const [me, setMe] = useState<(User & { avatar?: string | null }) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,9 +49,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
               setMe(qualifyUser(u));
               connectSocket(saved);
             }
-          } catch {
-            await SecureStore.deleteItemAsync(TOKEN_KEY);
-            if (!cancelled) setToken(null);
+          } catch (e: any) {
+            const msg = (e?.message || "").toLowerCase();
+            if (msg.includes("401") || msg.includes("unauthorized")) {
+              await SecureStore.deleteItemAsync(TOKEN_KEY);
+              if (!cancelled) setToken(null);
+            }
           }
         }
       } finally {
@@ -63,9 +64,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  async function requestOtp(email: string) {
-    await api.requestOtp(email);
+  async function forceRefresh() {
+    if (!token) return;
+    const u = await api.me(token);
+    setMe(qualifyUser(u));
   }
+
+  async function requestOtp(email: string) { await api.requestOtp(email); }
 
   async function verifyOtp(email: string, code: string) {
     const { token: tk, user } = await api.verifyOtp(email, code);
@@ -82,67 +87,54 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     disconnectSocket();
   }
 
-  async function updateProfile(data: { name?: string }) {
+  async function updateName(name: string) {
     if (!token) throw new Error("no_token");
-    console.log("[updateProfile] sending", data);
-    const res = await apiUpdateProfile(token, data);
-    const updated = (res as any).user || null;
-    if (updated) {
-      console.log("[updateProfile] response user.name =", updated.name);
-      setMe(qualifyUser(updated));
-    } else {
-      const u = await api.me(token);
-      console.log("[updateProfile] fallback /me name =", u.name);
-      setMe(qualifyUser(u));
+    const trimmed = (name ?? "").trim();
+    const payload = { name: trimmed === "" ? null : trimmed };
+    const prev = me;
+    setMe(p => p ? { ...p, name: payload.name } : p);
+    try {
+      const res = await apiUpdateProfile(token, payload);
+      const updated = (res as any).user;
+      if (updated) setMe(qualifyUser(updated));
+      else await forceRefresh();
+    } catch (e) {
+      setMe(prev);
+      throw e;
     }
   }
 
-  async function uploadAvatar(uri: string) {
+  async function updateAvatar(uri?: string) {
     if (!token) throw new Error("no_token");
-    console.log("[uploadAvatar] uri", uri);
+    if (!uri) {
+      const res = await apiUpdateProfile(token, { avatarUrl: null as any });
+      const u = (res as any).user;
+      if (u) setMe(qualifyUser(u));
+      else {
+        setMe(prev => prev ? { ...prev, avatarUrl: undefined, avatar: null } : prev);
+        await forceRefresh();
+      }
+      return;
+    }
     const res = await apiUploadAvatar(token, uri);
     const raw = (res as any).avatarUrl || ((res as any).user && (res as any).user.avatarUrl);
     const qualified = qualifyAvatarUrl(raw);
-    if (!qualified) throw new Error("avatarUrl_missing");
-    const urlWithBuster = `${qualified}?t=${Date.now()}`;
-    setMe(prev => prev ? { ...prev, avatarUrl: urlWithBuster } : prev);
-    console.log("[uploadAvatar] updated avatarUrl =", urlWithBuster);
-    return urlWithBuster;
+    if (qualified) {
+      const bust = `${qualified}?t=${Date.now()}`;
+      setMe(prev => prev ? { ...prev, avatarUrl: bust, avatar: bust } : prev);
+    }
+    await forceRefresh();
   }
 
   async function removeAvatar() {
-    if (!token) throw new Error("no_token");
-    await apiUpdateProfile(token, { avatarUrl: "" as any });
-    setMe(prev => prev ? { ...prev, avatarUrl: undefined } : prev);
-  }
-
-  async function exportIdentity() {
-    if (!me) throw new Error("no_user");
-    return JSON.stringify({
-      id: me.id,
-      email: me.email,
-      name: me.name ?? null,
-      avatarUrl: me.avatarUrl ?? null,
-      exportedAt: new Date().toISOString(),
-    }, null, 2);
-  }
-
-  async function updateName(name: string) {
-    await updateProfile({ name });
-  }
-  async function updateAvatar(uri?: string) {
-    if (!uri) {
-      await removeAvatar();
-    } else {
-      await uploadAvatar(uri);
-    }
+    await updateAvatar(undefined);
   }
 
   const value: Ctx = useMemo(() => ({
     loading, me, token,
     requestOtp, verifyOtp, signOut,
-    updateProfile, uploadAvatar, removeAvatar, exportIdentity,
-    updateName, updateAvatar,
+    updateName, updateAvatar, removeAvatar,
+    forceRefresh,
   }), [loading, me, token]);
 
   return <UserCtx.Provider value={value}>{children}</UserCtx.Provider>;

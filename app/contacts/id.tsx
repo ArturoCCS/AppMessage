@@ -1,5 +1,5 @@
-import { ContactsService } from "@/src/services/contacts/ContactsService";
 import { useUser } from "@/src/state/UserContext";
+import { api } from "@/src/utils/api";
 import { isUUIDv4 } from "@/src/utils/validate";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
@@ -9,7 +9,7 @@ import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 type TabKey = "mine" | "add";
 
 export default function ContactIDScreen() {
-  const { me, shareId } = useUser();
+  const { me, token, shareId } = useUser() as any;
   const [tab, setTab] = useState<TabKey>("mine");
 
   const [idInput, setIdInput] = useState("");
@@ -40,12 +40,17 @@ export default function ContactIDScreen() {
       Alert.alert("ID inválido", "No puedes agregarte a ti mismo.");
       return;
     }
-    if (await ContactsService.exists(raw)) {
+    if (!token) {
+      Alert.alert("Sesión", "No hay sesión activa.");
+      return;
+    }
+    const current = await api.listContacts(token);
+    if (current.some(c => c.id === raw)) {
       Alert.alert("Duplicado", "Ese contacto ya existe en tu lista.");
       return;
     }
-    const c = await ContactsService.addOutgoing(raw, name.trim() || "Contacto");
-    Alert.alert("Contacto agregado", `Se agregó "${c.name}" (${c.id}) en estado ${c.status}.`, [
+    await api.addContactByUserId(token, raw);
+    Alert.alert("Contacto agregado", `Se agregó "${name.trim() || "Contacto"}".`, [
       { text: "OK", onPress: () => router.replace("/contacts") },
     ]);
     setIdInput("");
@@ -54,6 +59,7 @@ export default function ContactIDScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#111" }}>
+      
       <View style={{ paddingTop: 10, paddingBottom: 12, paddingHorizontal: 12, backgroundColor: "#111", borderBottomWidth: 1, borderBottomColor: "#222", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 6 }}>
           <Text style={{ color: "#9ad", fontWeight: "700" }}>Volver</Text>

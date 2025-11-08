@@ -1,7 +1,6 @@
 import { Avatar } from "@/src/components/ui/Avatar";
-import { ContactsService } from "@/src/services/contacts/ContactsService";
 import { useUser } from "@/src/state/UserContext";
-import { parseContactPayload } from "@/src/utils/validate";
+import { api } from "@/src/utils/api";
 import { router } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Dimensions, Text, TouchableOpacity, View } from "react-native";
@@ -19,8 +18,7 @@ type CameraExports = {
 type TabKey = "my" | "scan";
 
 export default function ContactQRScreen() {
-  const { me, shareId } = useUser();
-
+  const { me, token, shareId } = useUser();
   const [tab, setTab] = useState<TabKey>("my");
   const [CameraViewComp, setCameraViewComp] = useState<CameraExports["CameraView"] | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -53,11 +51,12 @@ export default function ContactQRScreen() {
       if (status !== "granted") {
         Alert.alert("Permiso requerido", "Habilita la cámara para escanear el código.");
       }
-    } catch {
+    } catch (e: any) {
+      console.warn("[QR] Cámara error:", e.message);
       setHasPermission(false);
       setCameraReady(false);
       setCameraViewComp(null);
-      Alert.alert("Cámara no disponible", "No se pudo cargar la cámara en este entorno.");
+      Alert.alert("Cámara no disponible", "No se pudo cargar la cámara.");
     } finally {
       setLoadingCamera(false);
     }
@@ -65,25 +64,32 @@ export default function ContactQRScreen() {
 
   const handleScannedValue = useCallback(
     async (raw: string) => {
-      const parsed = parseContactPayload(raw);
-      if (!parsed) {
-        Alert.alert("Código inválido", "No es un ID o JSON de contacto válido.");
+      if (!token) {
+        Alert.alert("Sesión", "No hay sesión activa.");
         return;
       }
-      if (me && parsed.uid === me.id) {
-        Alert.alert("ID inválido", "No puedes agregarte a ti mismo.");
-        return;
+      try {
+        const parsed = JSON.parse(raw || "{}");
+        if (parsed?.t !== "contact" || !parsed?.uid) throw new Error("invalid");
+        const theirId: string = String(parsed.uid);
+        if (me && theirId === me.id) {
+          Alert.alert("ID inválido", "No puedes agregarte a ti mismo.");
+          return;
+        }
+        const current = await api.listContacts(token);
+        if (current.some(c => c.id === theirId)) {
+          Alert.alert("Duplicado", "Ese contacto ya existe.");
+          return;
+        }
+        await api.addContactByUserId(token, theirId);
+        Alert.alert("Contacto agregado", "Se agregó correctamente.", [
+          { text: "OK", onPress: () => router.replace("/contacts") },
+        ]);
+      } catch {
+        Alert.alert("Código inválido", "QR de contacto no válido.");
       }
-      if (await ContactsService.exists(parsed.uid)) {
-        Alert.alert("Duplicado", "Ese contacto ya existe en tu lista.");
-        return;
-      }
-      const c = await ContactsService.addOutgoing(parsed.uid, parsed.name ?? "Contacto");
-      Alert.alert("Contacto agregado", `"${c.name}" (${c.id}) en estado ${c.status}.`, [
-        { text: "OK", onPress: () => router.replace("/contacts") },
-      ]);
     },
-    [me]
+    [me, token]
   );
 
   const onBarcodeScanned = useCallback(
@@ -95,61 +101,12 @@ export default function ContactQRScreen() {
     [handleScannedValue, scanned]
   );
 
-  const exportQrPng = useCallback(async (): Promise<string> => {
-    if (!qrRef.current) throw new Error("QR no listo");
-    const base64: string = await new Promise((resolve) => {
-      qrRef.current.toDataURL((b64: string) => resolve(b64));
-    });
-
-    const {
-      cacheDirectory,
-      writeAsStringAsync,
-      EncodingType,
-    } = (await import("expo-file-system")) as typeof import("expo-file-system");
-
-    const filename = `my_contact_qr_${Date.now()}.png`;
-    const uri = `${cacheDirectory}${filename}`;
-    await writeAsStringAsync(uri, base64, { encoding: EncodingType.Base64 });
-    return uri;
-  }, []);
-
-  const shareQrImage = useCallback(async () => {
-    try {
-      const uri = await exportQrPng();
-
-      try {
-        const Sharing = (await import("expo-sharing")) as typeof import("expo-sharing");
-        if (Sharing.isAvailableAsync && (await Sharing.isAvailableAsync())) {
-          await Sharing.shareAsync(uri);
-          return;
-        }
-      } catch {
-      }
-      try {
-        const MediaLibrary =
-          (await import("expo-media-library")) as typeof import("expo-media-library");
-        const perm = await MediaLibrary.requestPermissionsAsync();
-        if (perm.status !== "granted") {
-          Alert.alert("Permiso requerido", "Habilita acceso a fotos para guardar el QR.");
-          return;
-        }
-        await MediaLibrary.saveToLibraryAsync(uri);
-        Alert.alert("Guardado", "El QR se guardó en tu galería.");
-      } catch {
-        Alert.alert("No se pudo compartir", "Intenta de nuevo o realiza una captura de pantalla.");
-      }
-    } catch {
-      Alert.alert("No se pudo compartir", "Intenta de nuevo.");
-    }
-  }, [exportQrPng]);
-
   const cameraUnavailable = !cameraReady || CameraViewComp == null || hasPermission === false;
   const screenW = Dimensions.get("window").width;
   const squareSize = Math.min(screenW * 0.75, 280);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#111" }}>
-
       <View style={{ paddingTop: 10, paddingBottom: 12, paddingHorizontal: 12, backgroundColor: "#111", borderBottomWidth: 1, borderBottomColor: "#222", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 6 }}>
           <Text style={{ color: "#9ad", fontWeight: "700" }}>Volver</Text>
@@ -185,26 +142,24 @@ export default function ContactQRScreen() {
       </View>
 
       {tab === "my" ? (
-        <View style={{ flex: 1, alignItems: "center", padding: 20, backgroundColor: "#111" }}>
+        <View style={{ flex: 1, alignItems: "center", padding: 20 }}>
           <View style={{ marginTop: 16, alignItems: "center", gap: 12 }}>
-            <Avatar uri={me?.avatar} name={me?.name} size={64} />
+            <Avatar uri={me?.avatarUrl || me?.avatar || undefined} name={me?.name || me?.email} size={64} />
             <Text style={{ color: "white", fontSize: 20, fontWeight: "800" }}>{me?.name ?? "Tú"}</Text>
             <Text style={{ color: "#9aa" }}>Contacto Message</Text>
           </View>
-
           <View style={{ marginTop: 18, padding: 16, backgroundColor: "#1b1b1b", borderRadius: 16 }}>
             <View style={{ backgroundColor: "white", borderRadius: 16, padding: 16 }}>
               <QRCode
                 value={payload}
                 size={squareSize * 0.8}
                 getRef={(r) => (qrRef.current = r)}
-                logo={me?.avatar ? { uri: me.avatar } : undefined}
+                logo={me?.avatarUrl ? { uri: me.avatarUrl } : undefined}
                 logoSize={squareSize * 0.18}
                 logoBackgroundColor="white"
               />
             </View>
           </View>
-
         </View>
       ) : (
         <View style={{ flex: 1, backgroundColor: "#000" }}>
@@ -220,21 +175,15 @@ export default function ContactQRScreen() {
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
               <Text style={{ color: "white", textAlign: "center", marginBottom: 16 }}>
-                {hasPermission === false ? "Permiso de cámara denegado." : "Cámara no disponible en este entorno."}
+                {hasPermission === false ? "Permiso de cámara denegado." : "Cámara no disponible."}
               </Text>
               <TouchableOpacity
                 onPress={() => startCamera()}
                 disabled={loadingCamera}
-                style={{
-                  backgroundColor: "#2d7cf0",
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  opacity: loadingCamera ? 0.7 : 1,
-                }}
+                style={{ backgroundColor: "#2d7cf0", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, opacity: loadingCamera ? 0.7 : 1 }}
               >
                 <Text style={{ color: "white", fontWeight: "800" }}>
-                  {loadingCamera ? "Cargando cámara…" : "Intentar de nuevo"}
+                  {loadingCamera ? "Cargando…" : "Intentar de nuevo"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -259,15 +208,7 @@ function ScannerOverlay({ squareSize }: { squareSize: number }) {
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
       <View style={{ height: squareSize, flexDirection: "row" }}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
-        <View
-          style={{
-            width: squareSize,
-            borderRadius: 20,
-            borderWidth: 2,
-            borderColor: "#18c964",
-            backgroundColor: "transparent",
-          }}
-        />
+        <View style={{ width: squareSize, borderRadius: 20, borderWidth: 2, borderColor: "#18c964", backgroundColor: "transparent" }} />
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />
       </View>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} />

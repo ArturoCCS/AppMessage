@@ -1,16 +1,20 @@
-import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
-import React, { useState } from "react";
-import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
-
 import { Avatar } from "@/src/components/ui/Avatar";
 import { useUser } from "@/src/state/UserContext";
+import { api } from "@/src/utils/api";
+import { setNameForce } from "@/src/utils/profile";
+import * as ImagePicker from "expo-image-picker";
+import React, { useEffect, useState } from "react";
+import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 export default function ProfileScreen() {
-  const { me, updateName, updateAvatar } = useUser();
+  const { me, token, updateAvatar, forceRefresh } = useUser();
   const [name, setName] = useState(me?.name ?? "");
   const [saving, setSaving] = useState(false);
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
+
+  useEffect(() => {
+    setName(me?.name ?? "");
+  }, [me?.name]);
 
   async function pickImage() {
     try {
@@ -23,38 +27,54 @@ export default function ProfileScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.9,
+        quality: 0.85,
       });
       if (!res.canceled && res.assets?.[0]?.uri) {
         setUpdatingAvatar(true);
         await updateAvatar(res.assets[0].uri);
-        setUpdatingAvatar(false);
+        await forceRefresh();
       }
     } catch (e: any) {
+      Alert.alert("Error subiendo avatar", e.message || String(e));
+    } finally {
       setUpdatingAvatar(false);
-      Alert.alert("Error", e.message || "No se pudo abrir la galería.");
     }
   }
 
   async function removeImage() {
+    setUpdatingAvatar(true);
     try {
-      setUpdatingAvatar(true);
       await updateAvatar(undefined);
-      setUpdatingAvatar(false);
+      await forceRefresh();
     } catch (e: any) {
+      Alert.alert("Error quitando avatar", e.message || String(e));
+    } finally {
       setUpdatingAvatar(false);
-      Alert.alert("Error", e.message || String(e));
     }
   }
 
   async function save() {
+    if (!token) {
+      Alert.alert("Sesión", "No hay token.");
+      return;
+    }
+    const trimmed = (name || "").trim();
+    const toSend = trimmed === "" ? null : trimmed;
+
     setSaving(true);
     try {
-      await updateName(name);
-      Alert.alert("Listo", "Perfil actualizado.");
-      router.back();
+      await setNameForce(token, toSend);
+
+      const u = await api.me(token);
+      if (u.name !== toSend) {
+        Alert.alert("Aviso", "El servidor aún no refleja el nombre. Reintenta.");
+        return;
+      }
+
+      await forceRefresh();
+      Alert.alert("Listo", "Nombre guardado.");
     } catch (e: any) {
-      Alert.alert("Error", e.message || String(e));
+      Alert.alert("Error guardando", e.message || String(e));
     } finally {
       setSaving(false);
     }
@@ -62,62 +82,43 @@ export default function ProfileScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#111" }}>
-
-      <View
-        style={{
-          paddingTop: 10,
-          paddingBottom: 12,
-          paddingHorizontal: 12,
-          backgroundColor: "#111",
-          borderBottomWidth: 1,
-          borderBottomColor: "#222",
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 6 }}>
-          <Text style={{ color: "#9ad", fontWeight: "700" }}>Volver</Text>
-        </TouchableOpacity>
+      <View style={{
+        paddingTop: 10, paddingBottom: 12, paddingHorizontal: 12,
+        backgroundColor: "#111", borderBottomWidth: 1, borderBottomColor: "#222",
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between"
+      }}>
         <Text style={{ color: "white", fontSize: 18, fontWeight: "800" }}>Perfil</Text>
         <View style={{ width: 60 }} />
       </View>
 
       <View style={{ padding: 20, gap: 16 }}>
-        <View style={{ alignItems: "center", gap: 12 }}>
-          <Avatar uri={me?.avatarUrl} name={me?.name || me?.email} size={88} />
-          <View style={{ flexDirection: "row", gap: 12 }}>
+        <View style={{ alignItems: "center", gap: 8 }}>
+          <Avatar uri={me?.avatarUrl || me?.avatar || undefined} name={me?.name || me?.email} size={92} />
+          <Text style={{ color: "white", fontSize: 18, fontWeight: "800" }}>
+            {me?.name || "Sin nombre"}
+          </Text>
+          <Text style={{ color: "#9aa", fontSize: 12 }}>{me?.email}</Text>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 12, alignSelf: "center" }}>
+          <TouchableOpacity
+            disabled={updatingAvatar}
+            onPress={pickImage}
+            style={{ backgroundColor: "#2d7cf0", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, opacity: updatingAvatar ? 0.6 : 1 }}
+          >
+            <Text style={{ color: "white", fontWeight: "800" }}>
+              {updatingAvatar ? "Procesando..." : "Cambiar foto"}
+            </Text>
+          </TouchableOpacity>
+          {(me?.avatarUrl || me?.avatar) ? (
             <TouchableOpacity
               disabled={updatingAvatar}
-              onPress={pickImage}
-              style={{
-                backgroundColor: "#2d7cf0",
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderRadius: 10,
-                opacity: updatingAvatar ? 0.6 : 1,
-              }}
+              onPress={removeImage}
+              style={{ backgroundColor: "#e33", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, opacity: updatingAvatar ? 0.6 : 1 }}
             >
-              <Text style={{ color: "white", fontWeight: "800" }}>
-                {updatingAvatar ? "Procesando..." : "Cambiar foto"}
-              </Text>
+              <Text style={{ color: "white", fontWeight: "800" }}>Quitar</Text>
             </TouchableOpacity>
-            {me?.avatarUrl ? (
-              <TouchableOpacity
-                disabled={updatingAvatar}
-                onPress={removeImage}
-                style={{
-                  backgroundColor: "#e33",
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  borderRadius: 10,
-                  opacity: updatingAvatar ? 0.6 : 1,
-                }}
-              >
-                <Text style={{ color: "white", fontWeight: "800" }}>Quitar</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
+          ) : null}
         </View>
 
         <View style={{ marginTop: 10 }}>
@@ -134,18 +135,9 @@ export default function ProfileScreen() {
         <TouchableOpacity
           onPress={save}
           disabled={saving}
-          style={{
-            backgroundColor: "#18c964",
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignSelf: "flex-start",
-            opacity: saving ? 0.7 : 1,
-          }}
+          style={{ backgroundColor: "#18c964", paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, alignSelf: "flex-start", opacity: saving ? 0.7 : 1 }}
         >
-          <Text style={{ color: "#051b10", fontWeight: "800" }}>
-            {saving ? "Guardando..." : "Guardar"}
-          </Text>
+          <Text style={{ color: "#051b10", fontWeight: "800" }}>{saving ? "Guardando..." : "Guardar"}</Text>
         </TouchableOpacity>
       </View>
     </View>

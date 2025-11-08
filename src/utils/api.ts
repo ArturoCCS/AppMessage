@@ -50,29 +50,30 @@ export const api = {
   },
 
   listContacts(token: string) {
-    return request<Array<{ id: string; email: string; name?: string | null; avatarUrl?: string | null }>>(
+    return request<Array<{ id: string; email: string; name?: string | null; avatarUrl?: string | null; status?: string }>>(
       "/contacts",
       { headers: { Authorization: `Bearer ${token}` } }
     );
   },
   addContactByUserId(token: string, userId: string) {
-    return request<{ ok: true }>(
-      "/contacts",
-      { method: "POST", headers: { Authorization: `Bearer ${token}` } as any, body: JSON.stringify({ userId }) }
-    );
+    return request<{ ok: true }>("/contacts", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` } as any,
+      body: JSON.stringify({ userId }),
+    });
   },
   addContactByEmail(token: string, email: string) {
-    return request<{ ok: true }>(
-      "/contacts",
-      { method: "POST", headers: { Authorization: `Bearer ${token}` } as any, body: JSON.stringify({ email }) }
-    );
+    return request<{ ok: true }>("/contacts", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` } as any,
+      body: JSON.stringify({ email }),
+    });
   },
-
   removeContact(token: string, userId: string) {
-    return request<{ ok: true }>(
-      `/contacts/${encodeURIComponent(userId)}`,
-      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } as any }
-    );
+    return request<{ ok: true }>(`/contacts/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` } as any,
+    });
   },
 
   getConversations(token: string) {
@@ -101,7 +102,8 @@ export const api = {
   },
 };
 
-export function updateProfile(token: string, data: { name?: string; avatarUrl?: string }) {
+// Acepta avatarUrl null explícitamente
+export function updateProfile(token: string, data: { name?: string | null; avatarUrl?: string | null }) {
   return request<{ ok: true; user?: User }>("/me", {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}` } as any,
@@ -110,31 +112,23 @@ export function updateProfile(token: string, data: { name?: string; avatarUrl?: 
 }
 
 export async function uploadAvatar(token: string, fileUri: string) {
-
   const filename = fileUri.split("/").pop() || "avatar.jpg";
   const match = /\.(\w+)$/.exec(filename);
-  const ext = match ? match[1] : "jpg";
+  const ext = (match ? match[1] : "jpg").toLowerCase();
   const type = `image/${ext === "jpg" ? "jpeg" : ext}`;
 
   const form = new FormData();
-  // @ts-ignore FormData file type for RN
-  form.append("avatar", {
-    uri: fileUri,
-    name: filename,
-    type,
-  });
+  // @ts-ignore FormData para RN
+  form.append("avatar", { uri: fileUri, name: filename, type });
 
   const res = await fetch(`${API_URL}/me/avatar`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    } as any,
+    headers: { Authorization: `Bearer ${token}` } as any,
     body: form as any,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(text || `HTTP ${res.status}`);
   }
-  const data = await res.json();
-  return data;
+  return await res.json();
 }
