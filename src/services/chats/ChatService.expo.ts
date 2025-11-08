@@ -2,6 +2,11 @@ import { ChatSummary, Message, User } from "@/src/types/chat";
 
 type Unsubscribe = () => void;
 
+function directChatId(a: string, b: string) {
+  const [x, y] = [a, b].sort();
+  return `dm-${x}-${y}`;
+}
+
 class InMemoryChatService {
   private users: Record<string, User> = {};
   private chats: Record<string, ChatSummary> = {};
@@ -9,81 +14,45 @@ class InMemoryChatService {
   private listeners: Record<string, Set<(msgs: Message[]) => void>> = {};
 
   constructor() {
-    const u1: User = { id: "u1", name: "Tú", avatar: undefined };
-    const u2: User = { id: "u2", name: "María" };
-    const u3: User = { id: "u3", name: "Carlos" };
-    const u4: User = { id: "u4", name: "ESP32" };
+  }
 
-    [u1, u2, u3, u4].forEach((u) => (this.users[u.id] = u));
+  ensureUser(u: User) {
+    this.users[u.id] = { id: u.id, name: u.name, avatar: u.avatar };
+  }
 
-    const c1: ChatSummary = {
-      id: "c1",
-      title: "María",
-      participants: [u1, u2],
-      lastMessageText: "¡Hola! ¿Cómo va el proyecto?",
-      lastMessageAt: Date.now() - 1000 * 60 * 2,
-      unreadCount: 1,
-    };
-    const c2: ChatSummary = {
-      id: "c2",
-      title: "Carlos",
-      participants: [u1, u3],
-      lastMessageText: "Te pasé el diagrama del NRF24",
-      lastMessageAt: Date.now() - 1000 * 60 * 60,
-      unreadCount: 0,
-    };
-    const c3: ChatSummary = {
-      id: "c3",
-      title: "ESP32",
-      participants: [u1, u4],
-      lastMessageText: "UART listo",
-      lastMessageAt: Date.now() - 1000 * 60 * 180,
-      unreadCount: 0,
-    };
-
-    [c1, c2, c3].forEach((c) => (this.chats[c.id] = c));
-
-    this.messages["c1"] = [
-      {
-        id: "m1",
-        chatId: "c1",
-        senderId: "u2",
-        text: "¡Hola! ¿Cómo va el proyecto?",
-        timestamp: Date.now() - 1000 * 60 * 3,
-      },
-      { id: "m2", chatId: "c1", senderId: "u1", text: "Bien 🙌", timestamp: Date.now() - 1000 * 60 * 2 },
-    ];
-    this.messages["c2"] = [
-      {
-        id: "m3",
-        chatId: "c2",
-        senderId: "u3",
-        text: "Te pasé el diagrama del NRF24",
-        timestamp: Date.now() - 1000 * 60 * 60,
-      },
-    ];
-    this.messages["c3"] = [
-      { id: "m4", chatId: "c3", senderId: "u4", text: "UART listo", timestamp: Date.now() - 1000 * 60 * 180 },
-    ];
+  createOrGetDirectChat(me: User, other: User): ChatSummary {
+    this.ensureUser(me);
+    this.ensureUser(other);
+    const id = directChatId(me.id, other.id);
+    if (!this.chats[id]) {
+      this.chats[id] = {
+        id,
+        title: other.name,
+        participants: [me, other],
+        lastMessageText: undefined,
+        lastMessageAt: undefined,
+        unreadCount: 0,
+      };
+      this.messages[id] = [];
+    }
+    return this.chats[id];
   }
 
   async listChats(): Promise<ChatSummary[]> {
     const list = Object.values(this.chats).sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
-    return new Promise((res) => setTimeout(() => res(list), 200));
+    return new Promise((res) => setTimeout(() => res(list), 100));
   }
 
   async getMessages(chatId: string): Promise<Message[]> {
     const msgs = this.messages[chatId] ?? [];
-    return new Promise((res) => setTimeout(() => res([...msgs]), 150));
+    return new Promise((res) => setTimeout(() => res([...msgs]), 60));
   }
 
   subscribe(chatId: string, cb: (messages: Message[]) => void): Unsubscribe {
     if (!this.listeners[chatId]) this.listeners[chatId] = new Set();
     this.listeners[chatId].add(cb);
     setTimeout(() => cb([...(this.messages[chatId] ?? [])]), 0);
-    return () => {
-      this.listeners[chatId].delete(cb);
-    };
+    return () => this.listeners[chatId].delete(cb);
   }
 
   async sendMessage(chatId: string, senderId: string, text: string): Promise<void> {
@@ -103,12 +72,11 @@ class InMemoryChatService {
       chat.lastMessageText = text;
       chat.lastMessageAt = msg.timestamp;
     }
-
     this.listeners[chatId]?.forEach((cb) => cb([...arr]));
   }
 
   getCurrentUser(): User {
-    return this.users["u1"];
+    return this.users["u1"] ?? { id: "u1", name: "Tú" };
   }
 
   getParticipant(userId: string): User | undefined {
