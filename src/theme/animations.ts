@@ -6,27 +6,12 @@ export const animations = {
   normal: 250,
   slow: 350,
   
-  // Easings
-  easeOut: Easing.out(Easing.cubic),
-  easeIn: Easing.in(Easing.cubic),
-  spring: Easing.elastic(1.2),
-  
   // Fade in animation
   fadeIn: (animatedValue: Animated.Value, duration = 250) => {
     return Animated.timing(animatedValue, {
       toValue: 1,
       duration,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-  },
-  
-  // Scale animation
-  scale: (animatedValue: Animated.Value, toValue = 1, duration = 250) => {
-    return Animated.spring(animatedValue, {
-      toValue,
-      friction: 4,
-      tension: 80,
+      easing: Easing.out(Easing.ease),
       useNativeDriver: true,
     });
   },
@@ -36,7 +21,7 @@ export const animations = {
     return Animated.timing(animatedValue, {
       toValue: 0,
       duration,
-      easing: Easing.out(Easing.cubic),
+      easing: Easing.out(Easing.ease),
       useNativeDriver: true,
     });
   },

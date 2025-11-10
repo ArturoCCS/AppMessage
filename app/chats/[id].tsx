@@ -10,23 +10,30 @@ import {
   StyleSheet,
   StatusBar,
   Animated,
+  ImageBackground,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useChat } from "@/src/state/ChatContext";
+import { useTheme } from "@/src/state/ThemeContext";
 import { LinearGradient } from "expo-linear-gradient";
 import type { Message } from "@/src/utils/api";
 import { FadeInView } from "@/src/components/animations/FadeInView";
 import { ScaleInView } from "@/src/components/animations/ScaleInView";
+import { BackgroundPicker } from "@/src/components/chat/BackgroundPicker";
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { subscribe, sendMessage, me } = useChat();
+  const { getChatBackground, setChatBackground, resetChatBackground } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  const inputHeight = useRef(new Animated.Value(50)).current;
+
+  const chatId = typeof id === "string" ? id : "";
+  const background = getChatBackground(chatId);
 
   useEffect(() => {
     if (!id || typeof id !== "string") return;
@@ -107,8 +114,20 @@ export default function ChatScreen() {
     );
   };
 
+  const BackgroundComponent = background?.type === 'image' ? (
+    <ImageBackground
+      source={{ uri: background.value }}
+      style={StyleSheet.absoluteFill}
+      resizeMode="cover"
+    >
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.1)' }]} />
+    </ImageBackground>
+  ) : (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: background?.value || '#f8fafc' }]} />
+  );
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+    <View style={{ flex: 1 }}>
       <StatusBar barStyle="light-content" />
       
       {/* Header */}
@@ -135,26 +154,33 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.headerAction}>
-          <Text style={styles.headerActionText}>⋮</Text>
+        <TouchableOpacity 
+          style={styles.headerAction}
+          onPress={() => setShowBackgroundPicker(true)}
+        >
+          <Text style={styles.headerActionText}>🎨</Text>
         </TouchableOpacity>
       </LinearGradient>
 
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(m) => m.id}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.messagesList}
-        ListEmptyComponent={
-          <FadeInView style={styles.emptyMessages}>
-            <Text style={styles.emptyIcon}>💬</Text>
-            <Text style={styles.emptyText}>No hay mensajes aún</Text>
-            <Text style={styles.emptySubtext}>Inicia la conversación</Text>
-          </FadeInView>
-        }
-      />
+      {/* Messages con fondo personalizado */}
+      <View style={{ flex: 1 }}>
+        {BackgroundComponent}
+        
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.messagesList}
+          ListEmptyComponent={
+            <FadeInView style={styles.emptyMessages}>
+              <Text style={styles.emptyIcon}>💬</Text>
+              <Text style={styles.emptyText}>No hay mensajes aún</Text>
+              <Text style={styles.emptySubtext}>Inicia la conversación</Text>
+            </FadeInView>
+          }
+        />
+      </View>
 
       {/* Input */}
       <KeyboardAvoidingView
@@ -171,22 +197,6 @@ export default function ChatScreen() {
               style={styles.input}
               multiline
               maxLength={1000}
-              onFocus={() => {
-                Animated.timing(inputHeight, {
-                  toValue: 70,
-                  duration: 200,
-                  useNativeDriver: false,
-                }).start();
-              }}
-              onBlur={() => {
-                if (!inputText) {
-                  Animated.timing(inputHeight, {
-                    toValue: 50,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }
-              }}
             />
             
             <TouchableOpacity
@@ -204,6 +214,19 @@ export default function ChatScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Background Picker Modal */}
+      <BackgroundPicker
+        visible={showBackgroundPicker}
+        onClose={() => setShowBackgroundPicker(false)}
+        onSelectColor={(color) => {
+          setChatBackground(chatId, { type: 'color', value: color });
+        }}
+        onSelectImage={(uri) => {
+          setChatBackground(chatId, { type: 'image', value: uri });
+        }}
+        currentBackground={background}
+      />
     </View>
   );
 }
@@ -274,9 +297,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerActionText: {
-    fontSize: 24,
-    color: '#ffffff',
-    fontWeight: '700',
+    fontSize: 20,
   },
   messagesList: {
     padding: 16,

@@ -7,8 +7,23 @@ import type { Message as UiMessage } from "@/src/types/chat";
 import type { Message as ApiMessage } from "@/src/utils/api";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Platform, View, ImageBackground } from "react-native";
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, View, TouchableOpacity, Text, ScrollView, Modal } from "react-native";
 import { colors } from "@/src/theme/colors";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Colores predefinidos
+const PRESET_COLORS = [
+  { name: "WhatsApp", color: "#ECE5DD" },
+  { name: "Blanco", color: "#FFFFFF" },
+  { name: "Gris Claro", color: "#F0F2F5" },
+  { name: "Verde Claro", color: "#E8F5E9" },
+  { name: "Azul Claro", color: "#E3F2FD" },
+  { name: "Naranja Claro", color: "#FFF3E0" },
+  { name: "Morado Claro", color: "#F3E5F5" },
+  { name: "Rosa Claro", color: "#FFEBEE" },
+  { name: "Oscuro", color: "#263238" },
+  { name: "Negro", color: "#1A1A1A" },
+];
 
 function mapApiToUi(m: ApiMessage): UiMessage {
   return {
@@ -26,7 +41,20 @@ export default function ChatDetail() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [text, setText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [showBgPicker, setShowBgPicker] = useState(false);
+  const [backgroundColor, setBackgroundColor] = useState(colors.bgChat);
   const listRef = useRef<FlatList<UiMessage>>(null);
+
+  // Cargar color guardado
+  useEffect(() => {
+    if (!chatId) return;
+    (async () => {
+      const saved = await AsyncStorage.getItem(`chat_bg_${chatId}`);
+      if (saved) {
+        setBackgroundColor(saved);
+      }
+    })();
+  }, [chatId]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -46,7 +74,7 @@ export default function ChatDetail() {
 
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     }
   }, [messages.length]);
 
@@ -55,6 +83,14 @@ export default function ChatDetail() {
     await sendMessage(chatId, text.trim());
     setText("");
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const selectColor = async (color: string) => {
+    setBackgroundColor(color);
+    if (chatId) {
+      await AsyncStorage.setItem(`chat_bg_${chatId}`, color);
+    }
+    setShowBgPicker(false);
   };
 
   // Simulación de "escribiendo..."
@@ -69,33 +105,179 @@ export default function ChatDetail() {
   }, [text]);
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.select({ ios: "padding", android: undefined })} 
+    <KeyboardAvoidingView
       style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
     >
       <Stack.Screen options={{ headerShown: false }} />
-      <AppHeader title="Chat" />
       
-      <View style={{ flex: 1, backgroundColor: colors.bgChat }}>
+      {/* Header con botón de personalizar */}
+      <View style={{ position: "relative" }}>
+        <AppHeader title="Chat" />
+        <TouchableOpacity
+          onPress={() => setShowBgPicker(true)}
+          style={{
+            position: "absolute",
+            right: 16,
+            top: Platform.OS === "ios" ? 50 : 20,
+            backgroundColor: "rgba(255,255,255,0.3)",
+            padding: 8,
+            borderRadius: 20,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 20 }}>🎨</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Fondo del chat con padding para el banner */}
+      <View style={{ flex: 1, backgroundColor, paddingTop: 0 }}>
         <FlatList
           ref={listRef}
           data={messages}
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => (
-            <MessageBubble 
-              text={item.text} 
-              timestamp={item.timestamp} 
+            <MessageBubble
+              text={item.text}
+              timestamp={item.timestamp}
               isMe={me ? item.senderId === me.id : false}
               status={me && item.senderId === me.id ? "read" : undefined}
             />
           )}
-          contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 4 }}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          contentContainerStyle={{ paddingVertical: 8, paddingBottom: 70 }}
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           ListFooterComponent={isTyping ? <TypingIndicator /> : null}
         />
       </View>
-      
-      <ComposerBar value={text} onChange={setText} onSend={onSend} />
+
+      {/* Barra fija abajo */}
+      <ComposerBar
+        value={text}
+        onChange={setText}
+        onSend={onSend}
+        style={styles.composerBar}
+      />
+
+      {/* Modal de selección de colores */}
+      <Modal
+        visible={showBgPicker}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowBgPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Header del modal */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🎨 Color de Fondo</Text>
+              <TouchableOpacity onPress={() => setShowBgPicker(false)}>
+                <Text style={styles.closeButton}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Lista de colores */}
+            <ScrollView style={styles.colorList}>
+              {PRESET_COLORS.map((item) => (
+                <TouchableOpacity
+                  key={item.color}
+                  onPress={() => selectColor(item.color)}
+                  style={styles.colorItem}
+                >
+                  <View
+                    style={[
+                      styles.colorCircle,
+                      { backgroundColor: item.color },
+                      backgroundColor === item.color && styles.colorCircleSelected,
+                    ]}
+                  />
+                  <Text style={styles.colorName}>{item.name}</Text>
+                  {backgroundColor === item.color && (
+                    <Text style={styles.checkMark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  composerBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderColor: "#ccccccff",
+    backgroundColor: "#fff",
+    paddingVertical: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+    maxHeight: "70%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111",
+  },
+  closeButton: {
+    fontSize: 24,
+    color: colors.primary,
+    fontWeight: "600",
+  },
+  colorList: {
+    padding: 20,
+  },
+  colorItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#f8f8f8",
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  colorCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 16,
+    borderWidth: 2,
+    borderColor: "#ddd",
+  },
+  colorCircleSelected: {
+    borderColor: colors.primary,
+    borderWidth: 3,
+  },
+  colorName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111",
+    flex: 1,
+  },
+  checkMark: {
+    fontSize: 20,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+});
