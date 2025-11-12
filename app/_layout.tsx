@@ -6,9 +6,9 @@ import { isMock, isPreview } from "@/src/utils/env";
 import { Stack } from "expo-router";
 import React from "react";
 import { Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
 if (isMock) {
-  // Usa import dinámico en lugar de require
   import("../src/setup/mock-api").catch(() => {
     console.log("Mock API no disponible");
   });
@@ -31,26 +31,85 @@ export default function RootLayout() {
                 top: 0,
                 left: 0,
                 right: 0,
-                paddingTop: 8,
-                paddingBottom: 6,
-                backgroundColor: isMock
-                  ? "rgba(52, 152, 219, 0.92)"
-                  : "rgba(255,193,7,0.90)",
-                alignItems: "center",
                 zIndex: 9999,
               }}
             >
-              <Text
+              <LinearGradient
+                colors={
+                  isMock
+                    ? ["#0088cc", "#0066aa"]
+                    : ["#f59e0b", "#ea580c"]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
                 style={{
-                  fontSize: 12,
-                  fontWeight: "700",
-                  color: isMock ? "#fff" : "#000",
+                  paddingTop: 8,
+                  paddingBottom: 6,
+                  paddingHorizontal: 12,
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 3,
+                  elevation: 3,
                 }}
               >
-                {isMock
-                  ? "Mock API activo — sin servidor (data en memoria)"
-                  : "Preview UI (Expo Go)"}
-              </Text>
+                {/* Icono */}
+                <View
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    backgroundColor: "rgba(255,255,255,0.3)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 10, color: "#fff" }}>
+                    {isMock ? "💾" : "👁"}
+                  </Text>
+                </View>
+
+                {/* Texto */}
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "600",
+                    color: "#ffffff",
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  {isMock
+                    ? "Modo Demo · Datos en memoria"
+                    : "Vista previa · Expo Go"}
+                </Text>
+
+                {/* Badge */}
+                <View
+                  style={{
+                    marginLeft: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    borderRadius: 8,
+                    backgroundColor: "rgba(255,255,255,0.25)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: "700",
+                      color: "#ffffff",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {isMock ? "MOCK" : "PREVIEW"}
+                  </Text>
+                </View>
+              </LinearGradient>
             </View>
           )}
         </ThemeProvider>

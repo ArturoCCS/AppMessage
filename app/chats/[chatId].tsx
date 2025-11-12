@@ -10,6 +10,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, View, TouchableOpacity, Text, ScrollView, Modal } from "react-native";
 import { colors } from "@/src/theme/colors";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { api } from "@/src/utils/api";
+import { useUser } from "@/src/state/UserContext";
 
 // Colores predefinidos
 const PRESET_COLORS = [
@@ -37,7 +39,8 @@ function mapApiToUi(m: ApiMessage): UiMessage {
 
 export default function ChatDetail() {
   const { chatId } = useLocalSearchParams<{ chatId: string }>();
-  const { me, getMessages, subscribe, sendMessage } = useChat();
+  const { me, getMessages, subscribe, sendMessage, refreshChats } = useChat();
+  const { token } = useUser();
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [text, setText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -55,6 +58,24 @@ export default function ChatDetail() {
       }
     })();
   }, [chatId]);
+
+  // Marcar mensajes como leídos al abrir el chat
+  useEffect(() => {
+    if (!chatId || !token) return;
+    
+    const markAsRead = async () => {
+      try {
+        await api.ackRead(token, chatId);
+        await refreshChats();
+      } catch (e) {
+        console.warn("Error marking as read:", e);
+      }
+    };
+
+    // Marca como leído después de 1 segundo de abrir el chat
+    const timer = setTimeout(markAsRead, 1000);
+    return () => clearTimeout(timer);
+  }, [chatId, token]);
 
   useEffect(() => {
     if (!chatId) return;

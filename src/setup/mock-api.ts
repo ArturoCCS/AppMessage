@@ -88,10 +88,15 @@ const DB = {
     { id: "c_bob", type: "direct", createdAt: nowIso() },
   ],
   messages: [
-    { id: uid("m"), conversationId: "c_alice", senderId: "u_alice", content: "¡Hola! Esto es un mock 🙂", createdAt: nowIso() },
-    { id: uid("m"), conversationId: "c_alice", senderId: "u_me", content: "¡Perfecto! Estamos en modo diseño.", createdAt: nowIso() },
-    { id: uid("m"), conversationId: "c_bob", senderId: "u_bob", content: "Mensaje con Bob (mock).", createdAt: nowIso() },
-  ] as Array<{ id: string; conversationId: string; senderId: string; content: string; createdAt: string }>,
+    { id: uid("m"), conversationId: "c_alice", senderId: "u_alice", content: "¡Hola! Esto es un mock 🙂", createdAt: nowIso(), readAt: null },
+    { id: uid("m"), conversationId: "c_alice", senderId: "u_me", content: "¡Perfecto! Estamos en modo diseño.", createdAt: nowIso(), readAt: nowIso() },    
+    { id: uid("m"), conversationId: "c_bob", senderId: "u_bob", content: "Mensaje con Bob (mock).", createdAt: nowIso(), readAt: null },
+  ] as Array<{ id: string; conversationId: string; senderId: string; content: string; createdAt: string; readAt: string | null }>,
+  // Mapeo de usuarios a conversaciones
+  userToConv: new Map<string, string>([
+    ["u_alice", "c_alice"],
+    ["u_bob", "c_bob"],
+  ]),
 };
 
 async function handleMock(input: any, init?: RequestInit): Promise<Response> {
@@ -165,7 +170,7 @@ async function handleMock(input: any, init?: RequestInit): Promise<Response> {
 
   if (path === "/contacts" && method === "GET") {
     if (!hasAuthToken(init, DB.token)) return unauthorized();
-    return toResponseJSON(DB.contacts.map(c => ({ id: c.id, email: c.email, name: c.name ?? null, avatarUrl: c.avatarUrl ?? null })));
+    return toResponseJSON(DB.contacts.map(c => ({ id: c.id, email: c.email, name: c.name ?? null, avatarUrl: c.avatarUrl ?? null })));      
   }
   if (path === "/contacts" && method === "POST") {
     if (!hasAuthToken(init, DB.token)) return unauthorized();
@@ -185,6 +190,7 @@ async function handleMock(input: any, init?: RequestInit): Promise<Response> {
     const convId = `c_${id}`;
     if (!DB.conversations.find(c => c.id === convId)) {
       DB.conversations.push({ id: convId, type: "direct", createdAt: nowIso() });
+      DB.userToConv.set(id, convId);
     }
     return toResponseJSON({ ok: true });
   }
@@ -210,27 +216,63 @@ async function handleMock(input: any, init?: RequestInit): Promise<Response> {
       .filter(m => (since ? Date.parse(m.createdAt) > Date.parse(since) : true));
     return toResponseJSON(list);
   }
+  
   if (path === "/messages" && method === "POST") {
     if (!hasAuthToken(init, DB.token)) return unauthorized();
     const { toUserId, content } = body || {};
     if (!content) return badRequest("missing_content");
-    let conversationId = DB.conversations[0]?.id || "c_new";
-    if (toUserId) conversationId = `c_${toUserId}`;
-    if (!DB.conversations.find(c => c.id === conversationId)) {
-      DB.conversations.push({ id: conversationId, type: "direct", createdAt: nowIso() });
+    
+    let conversationId: string;
+    
+    // Si toUserId es un ID de conversación existente (c_xxx), úsalo
+    if (toUserId.startsWith('c_')) {
+      conversationId = toUserId;
+    } else {
+      // Es un ID de usuario, busca conversación existente
+      const existingConv = DB.userToConv.get(toUserId);
+      
+      if (existingConv) {
+        // Ya existe conversación con este usuario
+        conversationId = existingConv;
+      } else {
+        // Nueva conversación con este usuario
+        conversationId = `c_${toUserId}`;
+        
+        // Solo crea nueva conversación si no existe
+        if (!DB.conversations.find(c => c.id === conversationId)) {
+          DB.conversations.push({ id: conversationId, type: "direct", createdAt: nowIso() });
+        }
+        
+        DB.userToConv.set(toUserId, conversationId);
+      }
     }
+    
     const msg = {
       id: uid("m"),
       conversationId,
       senderId: DB.me.id,
       content: String(content),
       createdAt: nowIso(),
+      readAt: null,
     };
+    
     DB.messages.push(msg);
     return toResponseJSON({ conversationId, message: msg });
   }
+  
   if (path === "/messages/ack-read" && method === "POST") {
     if (!hasAuthToken(init, DB.token)) return unauthorized();
+    const { conversationId } = body || {};
+    
+    if (conversationId) {
+      // Marca todos los mensajes de esta conversación como leídos
+      DB.messages.forEach(msg => {
+        if (msg.conversationId === conversationId && msg.senderId !== DB.me.id && !msg.readAt) {
+          msg.readAt = nowIso();
+        }
+      });
+    }
+    
     return toResponseJSON({ ok: true });
   }
 

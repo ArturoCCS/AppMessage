@@ -1,54 +1,86 @@
+import { colors } from "@/src/theme/colors";
 import React from "react";
-import { Text, TextInput, TouchableOpacity, View, StyleSheet, ViewStyle } from "react-native";
+import { TextInput, TouchableOpacity, View, Platform } from "react-native";
+import Svg, { Path } from "react-native-svg";
 
-interface ComposerBarProps {
+export function ComposerBar({
+  value,
+  onChange,
+  onSend,
+  style,
+}: {
   value: string;
   onChange: (t: string) => void;
   onSend: () => void;
-  style?: ViewStyle; // 👈 permite recibir estilos externos
-}
-
-export function ComposerBar({ value, onChange, onSend, style }: ComposerBarProps) {
+  style?: any;
+}) {
   return (
-    <View style={[styles.container, style]}>
-      <TextInput
-        placeholder="Escribe un mensaje"
-        value={value}
-        onChangeText={onChange}
-        style={styles.input}
-      />
-      <TouchableOpacity onPress={onSend} style={styles.button}>
-        <Text style={styles.buttonText}>Enviar</Text>
+    <View
+      style={[
+        {
+          flexDirection: "row",
+          padding: 12,
+          paddingBottom: Platform.OS === "ios" ? 24 : 12,
+          backgroundColor: colors.bg,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          gap: 10,
+          alignItems: "center",
+        },
+        style,
+      ]}
+    >
+      {/* Text Input */}
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.bgSecondary,
+          borderRadius: 20,
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          minHeight: 40,
+          maxHeight: 100,
+        }}
+      >
+        <TextInput
+          placeholder="Mensaje"
+          placeholderTextColor={colors.textMuted}
+          value={value}
+          onChangeText={onChange}
+          multiline
+          style={{
+            fontSize: 16,
+            color: colors.text,
+            lineHeight: 20,
+          }}
+        />
+      </View>
+
+      {/* Send Button - Solo flecha */}
+      <TouchableOpacity
+        onPress={onSend}
+        disabled={!value.trim()}
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: value.trim() ? colors.primary : colors.bgSecondary,
+          alignItems: "center",
+          justifyContent: "center",
+          shadowColor: colors.primary,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: value.trim() ? 0.3 : 0,
+          shadowRadius: 4,
+          elevation: value.trim() ? 3 : 0,
+        }}
+      >
+        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <Path
+            d="M2 12L22 2L12 22L10 14L2 12Z"
+            fill={value.trim() ? "#ffffff" : colors.textMuted}
+          />
+        </Svg>
       </TouchableOpacity>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    padding: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
-    gap: 8,
-    alignItems: "center",
-    backgroundColor: "#fff",
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  button: {
-    backgroundColor: "#0a7",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  buttonText: {
-    color: "white",
-    fontWeight: "700",
-  },
-});
